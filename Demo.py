@@ -1,3 +1,6 @@
+# 参考学长的C++程序重新造的轮子，并不完善，有很多问题
+# 可参考，但不建议使用
+
 import math
 import os
 import platform
