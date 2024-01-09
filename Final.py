@@ -19,7 +19,7 @@ avgWeightTurnAroundTime = None  # 平均带权周转时间
 
 class pcb:
     def __init__(self, name, status, arraiveTime, priority, pageFrame, pageFaultCount, serveTime, serveTimeLeft,
-                 finishTime, turnAroundTime, weightTunAroundTime, fc, runInfo, iostart, iofinish):
+                 finishTime, turnAroundTime, weightTunAroundTime, fc, runInfo, iostart, iofinish, currentAddr):
         self.name = name  # 进程名
         self.status = status  # 进程状态
         self.arraiveTime = arraiveTime  # 创建时间
@@ -35,6 +35,7 @@ class pcb:
         self.runInfo = runInfo
         self.iostart = iostart  # I/O开始时间
         self.iofinish = iofinish  # I/O结束时间
+        self.currentAddr = currentAddr  # 当前操作地址
 
     class function:
         def __init__(self, name, lenth, rtAddr):
@@ -56,11 +57,11 @@ def create():
 
     # 直接将三个txt文件的内容按格式硬编码为list对象
     process = []
-    process.append(pcb('A进程', '就绪', 0, 5, None, 0, 100, 100, None, None, None, None, None, None, None))
-    process.append(pcb('B进程', '就绪', 1, 4, None, 0, 31, 31, None, None, None, None, None, None, None))
-    process.append(pcb('C进程', '就绪', 3, 7, None, 0, 37, 37, None, None, None, None, None, None, None))
-    process.append(pcb('D进程', '就绪', 6, 5, None, 0, 34, 34, None, None, None, None, None, None, None))
-    process.append(pcb('E进程', '就绪', 8, 6, None, 0, 39, 39, None, None, None, None, None, None, None))
+    process.append(pcb('A进程', '就绪', 0, 5, None, 0, 100, 100, None, None, None, None, None, None, None, 0))
+    process.append(pcb('B进程', '就绪', 1, 4, None, 0, 31, 31, None, None, None, None, None, None, None, 0))
+    process.append(pcb('C进程', '就绪', 3, 7, None, 0, 37, 37, None, None, None, None, None, None, None, 0))
+    process.append(pcb('D进程', '就绪', 6, 5, None, 0, 34, 34, None, None, None, None, None, None, None, 0))
+    process.append(pcb('E进程', '就绪', 8, 6, None, 0, 39, 39, None, None, None, None, None, None, None, 0))
 
     for p in process:
         p.pageFrame = []
@@ -213,6 +214,7 @@ def fcfs():
 
     create()
     print("初始化进程完成")
+    showProcess()
 
     # 初始化时间和I/O队列
     TIME = 0
@@ -226,7 +228,6 @@ def fcfs():
     # 初始化就绪队列
     readyQueue = [p for p in process]
 
-    showProcess()
     while readyQueue or ioQueue:
 
         # 检查IO队列中是否有完成IO的进程
@@ -275,16 +276,26 @@ def fcfs():
                         if r.operation == '跳转':
                             requirePage(r.operateAddr, process.index(current_process))
                             showProcess()
-                            print("占用cpu的进程: ", current_process.name, "\t函数名: ",
-                                  current_process.fc[k].name,
-                                  "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr)
+                            # 遍历current_process.fc，找到当前地址对应的函数名
+                            for f in current_process.fc:
+                                if f.rtAddr > current_process.currentAddr:
+                                    break
+                                currentFunctionName = f.name
+                            # 遍历current_process.fc，找到目标地址对应的函数名
+                            for f in current_process.fc:
+                                if f.rtAddr > r.operateAddr:
+                                    break
+                                targetFunctionName = f.name
+                            current_process.currentAddr = r.operateAddr
+                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
+                                  "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr, "\t目标函数名: ",
+                                  targetFunctionName)
                             k += 1
 
                         if r.operation == '读写磁盘':
                             current_process.status = '等待'
-                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", current_process.fc[k].name,
-                                  "\t操作类型: ",
-                                  current_process.runInfo[k].operation, "\tI/O操作时间: ",
+                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
+                                  "\t操作类型: ", current_process.runInfo[k].operation, "\tI/O操作时间: ",
                                   current_process.runInfo[k].ioTime)
                             print("进程 ", current_process.name, " 开始 I/O 请求，变为等待态")
                             current_process.iostart = TIME
@@ -321,6 +332,7 @@ def rr():
 
     create()  # 初始化进程
     print("初始化进程完成")
+    showProcess()
 
     # 初始化时间和队列
     TIME = 0
@@ -328,7 +340,7 @@ def rr():
     time.sleep(0.1)
     ioQueue = []
     readyQueue = [p for p in process if p.arraiveTime <= TIME]  # 将到达时间小于等于当前时间的进程加入就绪队列
-    showProcess()
+
     while readyQueue or ioQueue:
         # 处理就绪队列
         if readyQueue:
@@ -359,17 +371,26 @@ def rr():
                         if r.operation == '跳转':
                             requirePage(r.operateAddr, process.index(current_process))
                             showProcess()
-                            if operation_index < len(current_process.fc):
-                                print("占用cpu的进程: ", current_process.name, "\t函数名: ",
-                                      current_process.fc[operation_index].name,
-                                      "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr)
+                            # 遍历current_process.fc，找到当前地址对应的函数名
+                            for f in current_process.fc:
+                                if f.rtAddr > current_process.currentAddr:
+                                    break
+                                currentFunctionName = f.name
+                            # 遍历current_process.fc，找到目标地址对应的函数名
+                            for f in current_process.fc:
+                                if f.rtAddr > r.operateAddr:
+                                    break
+                                targetFunctionName = f.name
+                            current_process.currentAddr = r.operateAddr
+                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
+                                  "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr, "\t目标函数名: ",
+                                  targetFunctionName)
                             operation_index += 1
                         elif r.operation == '读写磁盘':
                             current_process.status = '等待'
                             showProcess()
                             if operation_index < len(current_process.fc):
-                                print("占用cpu的进程: ", current_process.name, "\t函数名: ",
-                                      current_process.fc[operation_index].name,
+                                print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
                                       "\t操作类型: ", r.operation, "\tI/O操作时间: ", r.ioTime)
                             print("进程 ", current_process.name, " 开始 I/O 请求，变为等待态")
                             current_process.iostart = TIME
@@ -389,7 +410,9 @@ def rr():
                 showProcess()
             elif current_process.status != '等待':
                 # 如果进程未完成且不需要I/O，放回队列末尾
+                current_process.status = '就绪'
                 readyQueue.append(current_process)
+                print(f"进程 {current_process.name} 时间片内未完成，放回就绪队列末尾")
 
         # 检查IO队列中是否有完成IO的进程
         for p in list(ioQueue):
