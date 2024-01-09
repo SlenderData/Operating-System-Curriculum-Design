@@ -15,6 +15,7 @@ ioQueue = None  # I/O请求队列
 readyQueue = None  # 就绪队列
 avgTurnAroundTime = None  # 平均周转时间
 avgWeightTurnAroundTime = None  # 平均带权周转时间
+running_process = None  # 当前运行的进程
 
 
 class pcb:
@@ -168,6 +169,14 @@ def showProcess():
     print("***************************************************************************")
 
 
+# 显示当前就绪队列
+def showReadyQueue(readyQueue):
+    show = []
+    for p in readyQueue:
+        show.append(p.name)
+    print("当前就绪进程队列: ", show)
+
+
 # 页面置换
 def replacePage(n, index):
     global process
@@ -210,121 +219,158 @@ def requirePage(addr, index):
 
 
 def fcfs():
-    global process, TIME, ioQueue, readyQueue, avgTurnAroundTime, avgWeightTurnAroundTime
+    global process, TIME, ioQueue, readyQueue, avgTurnAroundTime, avgWeightTurnAroundTime, running_process
 
-    create()
+    create()  # 初始化进程
     print("初始化进程完成")
     showProcess()
 
-    # 初始化时间和I/O队列
     TIME = 0
+    print("")
     print("* ", "当前时间: ", TIME, " *")
     time.sleep(0.1)
     ioQueue = []
+    readyQueue = [p for p in process if p.arraiveTime <= TIME]
+    print("进程 ", readyQueue[0].name, " 到达，变为就绪态")
+    showReadyQueue(readyQueue)
 
-    # 按到达时间排序进程
-    process.sort(key=lambda x: x.arraiveTime)
+    running_process = None  # 添加一个变量来追踪当前运行的进程
 
-    # 初始化就绪队列
-    readyQueue = [p for p in process]
+    while readyQueue or ioQueue or running_process:
+        if running_process and running_process.serveTimeLeft == 0:
+            # 如果当前运行的进程已经完成
+            finish_process(running_process)
+            running_process = None
 
-    while readyQueue or ioQueue:
+            # 如果所有进程都已经完成
+            if not (readyQueue or ioQueue):
+                # 计算平均周转时间和带权周转时间
+                calculate_averages()
+                break
 
-        # 检查IO队列中是否有完成IO的进程
-        for p in list(ioQueue):
-            if len(readyQueue) == 0:
-                while p.iofinish > TIME:
-                    TIME += 1
-                    print("* ", "当前时间: ", TIME, " *")
-                    time.sleep(0.1)
-            if p.iofinish <= TIME:
-                print("进程 ", p.name, " I/O 完成，变为就绪态")
-                p.status = '就绪'
-                readyQueue.append(p)
-                ioQueue.remove(p)
+        check_io_queue()  # 检查IO队列中是否有完成IO的进程
 
-        if readyQueue:
-            # 取就绪队列中的第一个进程
-            current_process = readyQueue.pop(0)
-            print("进程 ", current_process.name, " 开始运行,进入CPU")
-            current_process.status = '运行'
-            k = 0
+        if not running_process and readyQueue:
+            # 如果没有进程在运行，并且就绪队列不为空
+            running_process = readyQueue.pop(0)
+            start_process(running_process)
+            showReadyQueue(readyQueue)
 
-            # 执行进程直到发生I/O或进程结束
-            while current_process.serveTimeLeft > 0 and k < len(current_process.runInfo):
-                TIME += 1
-                print("* ", "当前时间: ", TIME, " *")
-                current_process.serveTimeLeft -= 1
-                time.sleep(0.1)
+        # 运行当前进程一个时间单位
+        TIME += 1
+        if running_process:
+            running_process.serveTimeLeft -= 1
+        print("\n* ", "当前时间: ", TIME, " *")
+        time.sleep(0.1)
 
-                # 检查IO队列中是否有完成IO的进程
-                for p in list(ioQueue):
-                    if len(readyQueue) == 0:
-                        while p.iofinish > TIME:
-                            TIME += 1
-                            print("* ", "当前时间: ", TIME, " *")
-                            time.sleep(0.1)
-                    if p.iofinish <= TIME:
-                        print("进程 ", p.name, " I/O 完成，变为就绪态")
-                        p.status = '就绪'
-                        readyQueue.insert(0, p)  # 将完成 I/O 的进程加入就绪队列的队首
-                        ioQueue.remove(p)
+        check_arriving_processes()  # 检查新到达的进程
 
-                # 检查是否需要进行操作
-                for r in current_process.runInfo:
-                    if r.timeNode == current_process.serveTime - current_process.serveTimeLeft:
-                        if r.operation == '跳转':
-                            requirePage(r.operateAddr, process.index(current_process))
-                            showProcess()
-                            # 遍历current_process.fc，找到当前地址对应的函数名
-                            for f in current_process.fc:
-                                if f.rtAddr > current_process.currentAddr:
-                                    break
-                                currentFunctionName = f.name
-                            # 遍历current_process.fc，找到目标地址对应的函数名
-                            for f in current_process.fc:
-                                if f.rtAddr > r.operateAddr:
-                                    break
-                                targetFunctionName = f.name
-                            current_process.currentAddr = r.operateAddr
-                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
-                                  "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr, "\t目标函数名: ",
-                                  targetFunctionName)
-                            k += 1
+        if running_process:
+            if running_process.serveTimeLeft > 0:
+                check_page_jump(running_process)  # 检查页面跳转
+                if check_io_request(running_process):
+                    # 如果有 IO 请求发生
+                    running_process = None  # 暂停当前进程
 
-                        if r.operation == '读写磁盘':
-                            current_process.status = '等待'
-                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
-                                  "\t操作类型: ", current_process.runInfo[k].operation, "\tI/O操作时间: ",
-                                  current_process.runInfo[k].ioTime)
-                            print("进程 ", current_process.name, " 开始 I/O 请求，变为等待态")
-                            current_process.iostart = TIME
-                            current_process.iofinish = TIME + r.ioTime
-                            ioQueue.append(current_process)
-                            k += 1
 
-                if current_process.status == '等待':
-                    break
-
-            # 如果进程完成，则更新其状态和统计数据
-            if current_process.serveTimeLeft == 0:
-                current_process.status = '完成'
-                print("进程 ", current_process.name, " 完成")
-                current_process.finishTime = TIME
-                current_process.turnAroundTime = TIME - current_process.arraiveTime
-                current_process.weightTunAroundTime = current_process.turnAroundTime / current_process.serveTime
+def check_page_jump(proc):
+    for r in proc.runInfo:
+        if r.timeNode == proc.serveTime - proc.serveTimeLeft:
+            if r.operation == '跳转':
+                # 处理页面跳转
+                requirePage(r.operateAddr, process.index(proc))
                 showProcess()
+                # 遍历proc.fc，找到当前地址对应的函数名
+                for f in proc.fc:
+                    if f.rtAddr > proc.currentAddr:
+                        break
+                    currentFunctionName = f.name
+                # 遍历proc.fc，找到目标地址对应的函数名
+                for f in proc.fc:
+                    if f.rtAddr > r.operateAddr:
+                        break
+                    targetFunctionName = f.name
+                # 更新进程的当前地址
+                proc.currentAddr = r.operateAddr
+                print("占用cpu的进程: ", proc.name, "\t函数名: ", currentFunctionName,
+                      "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr, "\t目标函数名: ",
+                      targetFunctionName)
 
-        # 将新到达的进程添加到就绪队列
-        for p in list(filter(lambda x: x.arraiveTime == TIME, process)):
-            if p not in readyQueue and p not in ioQueue:
-                p.status = '就绪'
-                readyQueue.append(p)
 
-    avgTurnAroundTime = sum(p.turnAroundTime for p in process) / len(process)
-    avgWeightTurnAroundTime = sum(p.weightTunAroundTime for p in process) / len(process)
-    print("")
-    print("平均周转时间：", avgTurnAroundTime, "\t平均带权周转时间：", avgWeightTurnAroundTime)
+def finish_process(proc):
+    proc.status = '完成'
+    print(f"进程 {proc.name} 完成")
+    proc.finishTime = TIME
+    proc.turnAroundTime = TIME - proc.arraiveTime
+    proc.weightTunAroundTime = proc.turnAroundTime / proc.serveTime
+    showProcess()
+
+
+def check_io_queue():
+    global TIME, running_process
+    for p in list(ioQueue):
+        if p.iofinish == TIME:
+            print(f"进程 {p.name} I/O 完成，变为就绪态，放入就绪队列首部")
+            p.status = '就绪'
+            readyQueue.insert(0, p)
+            showReadyQueue(readyQueue)
+            ioQueue.remove(p)
+
+            if running_process:
+                # 如果当前有进程在运行，将其移回就绪队列
+                print(f"暂停当前运行的进程 {running_process.name}，将其放在绪队列刚完成 I/O 的进程后面")
+                running_process.status = '就绪'
+                readyQueue.insert(1, running_process)
+                showReadyQueue(readyQueue)
+
+            running_process = readyQueue.pop(0)  # 将刚完成 I/O 的进程移出就绪队列
+            print("刚完成 I/O 的进程 ", p.name, " 开始运行，进入CPU，移出就绪队列")
+            showReadyQueue(readyQueue)
+            return True
+            break
+    return False
+
+
+def start_process(proc):
+    print(f"进程 {proc.name} 开始运行，进入CPU，移出就绪队列")
+    proc.status = '运行'
+
+
+def check_arriving_processes():
+    for p in list(filter(lambda x: x.arraiveTime == TIME, process)):
+        if p not in readyQueue and p not in ioQueue:
+            p.status = '就绪'
+            readyQueue.append(p)
+            print("进程 ", p.name, " 到达，变为就绪态")
+            showReadyQueue(readyQueue)
+
+
+def check_io_request(proc):
+    for r in proc.runInfo:
+        if r.timeNode == proc.serveTime - proc.serveTimeLeft:
+            if r.operation == '读写磁盘':
+                # 处理 I/O 请求
+                # 遍历proc.fc，找到当前地址对应的函数名
+                for f in proc.fc:
+                    if f.rtAddr > proc.currentAddr:
+                        break
+                    currentFunctionName = f.name
+                proc.status = '等待'
+                print("占用cpu的进程: ", proc.name, "\t函数名: ", currentFunctionName,
+                      "\t操作类型: ", r.operation, "\tI/O操作时间: ", r.ioTime)
+                showProcess()
+                proc.iostart = TIME
+                proc.iofinish = TIME + r.ioTime
+                ioQueue.append(proc)
+                return True
+    return False
+
+
+def calculate_averages():
+    global avgTurnAroundTime, avgWeightTurnAroundTime
+    avgTurnAroundTime = sum(p.turnAroundTime for p in process if p.status == '完成') / len(process)
+    avgWeightTurnAroundTime = sum(p.weightTunAroundTime for p in process if p.status == '完成') / len(process)
+    print("\n平均周转时间：", avgTurnAroundTime, "\t平均带权周转时间：", avgWeightTurnAroundTime)
 
 
 def rr():
@@ -336,25 +382,29 @@ def rr():
 
     # 初始化时间和队列
     TIME = 0
+    print("")
     print("* ", "当前时间: ", TIME, " *")
     time.sleep(0.1)
     ioQueue = []
     readyQueue = [p for p in process if p.arraiveTime <= TIME]  # 将到达时间小于等于当前时间的进程加入就绪队列
+    print("进程 ", readyQueue[0].name, " 到达，变为就绪态")
+    showReadyQueue(readyQueue)
 
     while readyQueue or ioQueue:
         # 处理就绪队列
         if readyQueue:
             current_process = readyQueue.pop(0)
-            print(f"进程 {current_process.name} 开始运行, 进入CPU")
+            print(f"进程 {current_process.name} 开始运行，进入CPU，移出就绪队列")
+            showReadyQueue(readyQueue)
             current_process.status = '运行'
             time_spent = 0
-            operation_index = 0  # 初始化操作索引
 
             # 执行时间片
             while time_spent < timeSlice and current_process.serveTimeLeft > 0:
                 TIME += 1
                 time_spent += 1
                 current_process.serveTimeLeft -= 1
+                print("")
                 print("* ", "当前时间: ", TIME, " *")
                 time.sleep(0.1)
 
@@ -363,6 +413,8 @@ def rr():
                     if p not in readyQueue and p not in ioQueue:
                         p.status = '就绪'
                         readyQueue.append(p)
+                        print("进程 ", p.name, " 到达，变为就绪态")
+                        showReadyQueue(readyQueue)
 
                 # 检查并处理I/O请求
                 for r in current_process.runInfo:
@@ -385,14 +437,17 @@ def rr():
                             print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
                                   "\t操作类型: ", r.operation, "\t操作地址: ", r.operateAddr, "\t目标函数名: ",
                                   targetFunctionName)
-                            operation_index += 1
                         elif r.operation == '读写磁盘':
+                            # 遍历current_process.fc，找到当前地址对应的函数名
+                            for f in current_process.fc:
+                                if f.rtAddr > current_process.currentAddr:
+                                    break
+                                currentFunctionName = f.name
                             current_process.status = '等待'
-                            showProcess()
-                            if operation_index < len(current_process.fc):
-                                print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
-                                      "\t操作类型: ", r.operation, "\tI/O操作时间: ", r.ioTime)
+                            print("占用cpu的进程: ", current_process.name, "\t函数名: ", currentFunctionName,
+                                  "\t操作类型: ", r.operation, "\tI/O操作时间: ", r.ioTime)
                             print("进程 ", current_process.name, " 开始 I/O 请求，变为等待态")
+                            showProcess()
                             current_process.iostart = TIME
                             current_process.iofinish = TIME + r.ioTime
                             ioQueue.append(current_process)
@@ -413,30 +468,99 @@ def rr():
                 current_process.status = '就绪'
                 readyQueue.append(current_process)
                 print(f"进程 {current_process.name} 时间片内未完成，放回就绪队列末尾")
+                showReadyQueue(readyQueue)
 
         # 检查IO队列中是否有完成IO的进程
         for p in list(ioQueue):
             if len(readyQueue) == 0:
                 while p.iofinish > TIME:
                     TIME += 1
+                    print("")
                     print("* ", "当前时间: ", TIME, " *")
                     time.sleep(0.1)
             if p.iofinish <= TIME:
-                print(f"进程 {p.name} I/O 完成，变为就绪态")
+                print(f"进程 {p.name} I/O 完成，变为就绪态，放回就绪队列末尾")
                 p.status = '就绪'
                 readyQueue.append(p)
                 ioQueue.remove(p)
+                showReadyQueue(readyQueue)
 
         # 将新到达的进程添加到就绪队列
         for p in list(filter(lambda x: x.arraiveTime == TIME, process)):
             if p not in readyQueue and p not in ioQueue:
                 p.status = '就绪'
                 readyQueue.append(p)
+                showReadyQueue(readyQueue)
 
     # 计算平均周转时间和带权周转时间
-    avgTurnAroundTime = sum(p.turnAroundTime for p in process if p.status == '完成') / len(process)
-    avgWeightTurnAroundTime = sum(p.weightTunAroundTime for p in process if p.status == '完成') / len(process)
-    print("\n平均周转时间：", avgTurnAroundTime, "\t平均带权周转时间：", avgWeightTurnAroundTime)
+    calculate_averages()
+
+
+# def rr():
+#     global process, TIME, ioQueue, readyQueue, avgTurnAroundTime, avgWeightTurnAroundTime, running_process, timeSlice
+#
+#     create()  # 初始化进程
+#     print("初始化进程完成")
+#     showProcess()
+#
+#     TIME = 0
+#     print("")
+#     print("* ", "当前时间: ", TIME, " *")
+#     time.sleep(0.1)
+#     ioQueue = []
+#     readyQueue = [p for p in process if p.arraiveTime <= TIME]
+#     print("进程 ", readyQueue[0].name, " 到达，变为就绪态")
+#     showReadyQueue(readyQueue)
+#
+#     running_process = None
+#     remaining_time_slice = 0  # 剩余时间片
+#
+#     while readyQueue or ioQueue or running_process:
+#         if running_process and running_process.serveTimeLeft == 0:
+#             # 如果当前运行的进程已经完成
+#             finish_process(running_process)
+#             running_process = None
+#             remaining_time_slice = 0
+#             # 如果所有进程都已经完成
+#             if not (readyQueue or ioQueue):
+#                 # 计算平均周转时间和带权周转时间
+#                 calculate_averages()
+#                 break
+#
+#         if check_io_queue() and not(ioQueue):
+#             remaining_time_slice = 0
+#
+#         if not running_process and readyQueue:
+#             # 如果没有进程在运行，并且就绪队列不为空
+#             running_process = readyQueue.pop(0)
+#             start_process(running_process)
+#             showReadyQueue(readyQueue)
+#             remaining_time_slice = timeSlice  # 重置时间片长度
+#
+#         TIME += 1
+#         if running_process:
+#             running_process.serveTimeLeft -= 1
+#         remaining_time_slice -= 1
+#         print("\n* ", "当前时间: ", TIME, " *")
+#         time.sleep(0.1)
+#
+#         check_arriving_processes()  # 检查新到达的进程
+#
+#         if running_process:
+#             if running_process.serveTimeLeft > 0:
+#                 check_page_jump(running_process)  # 检查页面跳转
+#                 if check_io_request(running_process):
+#                     # 如果有 IO 请求发生
+#                     running_process = None  # 暂停当前进程
+#                     remaining_time_slice = 0
+#                     continue
+#
+#             if remaining_time_slice == 0 and running_process.serveTimeLeft > 0:
+#                 # 如果时间片用完且进程未完成
+#                 print(f"时间片用完，进程 {running_process.name} 回到就绪队列末尾")
+#                 running_process.status = '就绪'
+#                 readyQueue.append(running_process)
+#                 running_process = None
 
 
 def writeResult():
