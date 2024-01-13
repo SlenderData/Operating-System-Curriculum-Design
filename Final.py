@@ -1,3 +1,6 @@
+# 本代码有是在 Demo.py 的基础上进行修改得到的大屎山，有很多不够精简的地方，冗余的代码也很多
+# 但是由于临近 DDL，无法进行重构，故将其作为最终版本提交
+
 import math
 import os
 import platform
@@ -496,6 +499,7 @@ def rr():
     calculate_averages()
 
 
+# 尝试对过于冗长的原rr()函数进行重构精简，但是由于时间关系未能完成，总是出现各种各样的错误，故弃用
 # def rr():
 #     global process, TIME, ioQueue, readyQueue, avgTurnAroundTime, avgWeightTurnAroundTime, running_process, timeSlice
 #
