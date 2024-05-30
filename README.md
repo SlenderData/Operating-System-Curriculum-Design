@@ -11,9 +11,3 @@
 &emsp;&emsp;&emsp;&emsp;&emsp;<img src="https://raw.githubusercontent.com/SlenderData/img/main/images/%E5%B8%B8%E7%94%A8/Logo/Language/Python.svg" alt="Python" style="height:1em"> `Python 3.12.1`
 
 &emsp;&emsp;&emsp;&emsp;&emsp;<img src="https://raw.githubusercontent.com/SlenderData/img/main/images/%E5%B8%B8%E7%94%A8/Logo/IDE/JetBrains/PyCharm.svg" alt="PyCharm" style="height:1em"> `PyCharm 2023.3.2`
-
-> [!IMPORTANT]
->
-> 嘻嘻，拿惹优秀噜🥰
-> 
-> ![](https://raw.githubusercontent.com/SlenderData/img/main/images/2024/02/05/22-24-48-8acb6bc14ab1e6b4c79bff2472216ca3-Snipaste_2024-02-05_22-14-21-747097.png)
